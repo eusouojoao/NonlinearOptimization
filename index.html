@@ -25,7 +25,7 @@
 </div>
 
 <script>
-    const url = 'ONL-notes.pdf';
+    const url = '/notes/ONL-notes.pdf';
     let pdfDoc = null, pageNum = 1, isRendering = false;
 
     const pdfjsLib = window['pdfjs-dist/build/pdf'];
@@ -75,6 +75,7 @@
     }).catch(err => {
         console.error("Error loading PDF: ", err);
         document.body.innerHTML = "<h1>PDF not found.</h1>";
+        document.body.innerHTML = `<p>Attempted to load: <b>${url}</b></p>`;
     });
 </script>
 
