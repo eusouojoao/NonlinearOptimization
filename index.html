@@ -1,82 +1,98 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>PDF Viewer</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
+    <meta charset="UTF-8">
+    <title>ONL Notes Viewer</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
     <style>
-        body { background: #333; color: white; font-family: sans-serif; text-align: center; margin: 0; }
-        #controls { padding: 15px; background: #222; position: sticky; top: 0; z-index: 10; }
-        .canvas-container { display: flex; justify-content: center; gap: 10px; padding: 20px; overflow-x: auto; }
-        canvas { background: white; max-width: 45%; height: auto; box-shadow: 0 0 10px rgba(0,0,0,0.5); }
-        button { padding: 8px 16px; cursor: pointer; }
+        :root { color-scheme: light dark; }
+        body { 
+            background: Canvas; color: CanvasText; 
+            font-family: system-ui, sans-serif; margin: 0; 
+            display: flex; flex-direction: column; height: 100vh; overflow: hidden;
+        }
+        #controls { 
+            padding: 10px; display: flex; justify-content: center; 
+            align-items: center; gap: 1.5rem; border-bottom: 1px solid ButtonBorder; 
+            background: Canvas; z-index: 10;
+        }
+        .view-container { flex: 1; display: flex; justify-content: center; align-items: center; overflow: auto; padding: 10px; }
+        .spread { display: flex; gap: 5px; align-items: center; }
+        canvas { background: white; max-height: 85vh; width: auto; border: 1px solid ButtonBorder; }
+        button { padding: 6px 14px; cursor: pointer; font-size: 0.9rem; }
+        #page_info { font-size: 0.9rem; min-width: 100px; text-align: center; }
+        #loading { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); font-weight: bold; }
     </style>
 </head>
 <body>
 
-<div id="controls">
-    <button id="prev">Backward</button>
-    <span id="page_info">Page <span id="page_num">1</span> / <span id="page_count">0</span></span>
-    <button id="next">Forward</button>
-</div>
+<div id="loading">Loading PDF...</div>
 
-<div class="canvas-container">
-    <canvas id="canvas-left"></canvas>
-    <canvas id="canvas-right"></canvas>
-</div>
+<nav id="controls">
+    <button id="prev" disabled>Backward</button>
+    <div id="page_info">Page <span id="page_num">1</span> / <span id="page_count">-</span></div>
+    <button id="next" disabled>Forward</button>
+</nav>
+
+<main class="view-container">
+    <div class="spread">
+        <canvas id="left-canvas"></canvas>
+        <canvas id="right-canvas"></canvas>
+    </div>
+</main>
 
 <script>
-    const url = 'notes/ONL-notes.pdf';
-    let pdfDoc = null, pageNum = 1, isRendering = false;
+    const url = 'notes/ONL-notes.pdf'; 
 
     const pdfjsLib = window['pdfjs-dist/build/pdf'];
-    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
 
-    function renderPage(num, canvasId) {
+    let pdfDoc = null, pageNum = 1;
+
+    async function renderPage(num, canvasId) {
         const canvas = document.getElementById(canvasId);
         const ctx = canvas.getContext('2d');
-        
-        if (num > pdfDoc.numPages) {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        if (num < 1 || num > pdfDoc.numPages) {
             canvas.style.display = 'none';
             return;
         }
         canvas.style.display = 'block';
-
-        pdfDoc.getPage(num).then(page => {
-            const viewport = page.getViewport({ scale: 1.5 });
-            canvas.height = viewport.height;
-            canvas.width = viewport.width;
-            page.render({ canvasContext: ctx, viewport: viewport });
-        });
+        const page = await pdfDoc.getPage(num);
+        const viewport = page.getViewport({ scale: 1.5 });
+        canvas.height = viewport.height;
+        canvas.width = viewport.width;
+        await page.render({ canvasContext: ctx, viewport: viewport }).promise;
     }
 
-    function updateSpread() {
-        document.getElementById('page_num').textContent = `${pageNum}-${Math.min(pageNum + 1, pdfDoc.numPages)}`;
-        renderPage(pageNum, 'canvas-left');
-        renderPage(pageNum + 1, 'canvas-right');
+    async function update() {
+        const isLast = pageNum >= pdfDoc.numPages;
+        document.getElementById('page_num').textContent = isLast ? pageNum : `${pageNum}-${pageNum + 1}`;
+        document.getElementById('prev').disabled = (pageNum <= 1);
+        document.getElementById('next').disabled = (pageNum + 1 >= pdfDoc.numPages);
+        
+        await Promise.all([
+            renderPage(pageNum, 'left-canvas'),
+            renderPage(pageNum + 1, 'right-canvas')
+        ]);
     }
 
-    document.getElementById('prev').addEventListener('click', () => {
-        if (pageNum <= 1) return;
-        pageNum -= 2;
-        updateSpread();
-    });
+    document.getElementById('prev').onclick = () => { pageNum = Math.max(1, pageNum - 2); update(); };
+    document.getElementById('next').onclick = () => { if (pageNum + 2 <= pdfDoc.numPages) { pageNum += 2; update(); } };
 
-    document.getElementById('next').addEventListener('click', () => {
-        if (pageNum + 2 > pdfDoc.numPages) return;
-        pageNum += 2;
-        updateSpread();
+    window.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowLeft') document.getElementById('prev').click();
+        if (e.key === 'ArrowRight') document.getElementById('next').click();
     });
 
     pdfjsLib.getDocument(url).promise.then(doc => {
         pdfDoc = doc;
+        document.getElementById('loading').style.display = 'none';
         document.getElementById('page_count').textContent = doc.numPages;
-        updateSpread();
+        update();
     }).catch(err => {
-        console.error("Error loading PDF: ", err);
-        document.body.innerHTML = "<h1>PDF not found.</h1>";
+        document.getElementById('loading').style.display = 'none';
+        document.body.innerHTML = `<div style="padding:20px;"><h2>Error</h2><p>${err.message}</p></div>`;
     });
 </script>
-
 </body>
 </html>
