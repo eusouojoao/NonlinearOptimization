@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>PDF Viewer</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
+    <style>
+        body { background: #333; color: white; font-family: sans-serif; text-align: center; margin: 0; }
+        #controls { padding: 15px; background: #222; position: sticky; top: 0; z-index: 10; }
+        .canvas-container { display: flex; justify-content: center; gap: 10px; padding: 20px; overflow-x: auto; }
+        canvas { background: white; max-width: 45%; height: auto; box-shadow: 0 0 10px rgba(0,0,0,0.5); }
+        button { padding: 8px 16px; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+<div id="controls">
+    <button id="prev">Backward</button>
+    <span id="page_info">Page <span id="page_num">1</span> / <span id="page_count">0</span></span>
+    <button id="next">Forward</button>
+</div>
+
+<div class="canvas-container">
+    <canvas id="canvas-left"></canvas>
+    <canvas id="canvas-right"></canvas>
+</div>
+
+<script>
+    const url = 'ONL-notes.pdf';
+    let pdfDoc = null, pageNum = 1, isRendering = false;
+
+    const pdfjsLib = window['pdfjs-dist/build/pdf'];
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
+
+    function renderPage(num, canvasId) {
+        const canvas = document.getElementById(canvasId);
+        const ctx = canvas.getContext('2d');
+        
+        if (num > pdfDoc.numPages) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            canvas.style.display = 'none';
+            return;
+        }
+        canvas.style.display = 'block';
+
+        pdfDoc.getPage(num).then(page => {
+            const viewport = page.getViewport({ scale: 1.5 });
+            canvas.height = viewport.height;
+            canvas.width = viewport.width;
+            page.render({ canvasContext: ctx, viewport: viewport });
+        });
+    }
+
+    function updateSpread() {
+        document.getElementById('page_num').textContent = `${pageNum}-${Math.min(pageNum + 1, pdfDoc.numPages)}`;
+        renderPage(pageNum, 'canvas-left');
+        renderPage(pageNum + 1, 'canvas-right');
+    }
+
+    document.getElementById('prev').addEventListener('click', () => {
+        if (pageNum <= 1) return;
+        pageNum -= 2;
+        updateSpread();
+    });
+
+    document.getElementById('next').addEventListener('click', () => {
+        if (pageNum + 2 > pdfDoc.numPages) return;
+        pageNum += 2;
+        updateSpread();
+    });
+
+    pdfjsLib.getDocument(url).promise.then(doc => {
+        pdfDoc = doc;
+        document.getElementById('page_count').textContent = doc.numPages;
+        updateSpread();
+    }).catch(err => {
+        console.error("Error loading PDF: ", err);
+        document.body.innerHTML = "<h1>PDF not found.</h1>";
+    });
+</script>
+
+</body>
+</html>
