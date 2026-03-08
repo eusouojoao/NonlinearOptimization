@@ -227,66 +227,68 @@
 
     .spread.animating {
       position: absolute;
-      inset: auto;
+      top: 50%;
+      left: 50%;
+      transform-origin: center center;
     }
 
     .spread.enter-from-right {
-      animation: spreadEnterFromRight 320ms cubic-bezier(0.22, 0.8, 0.2, 1) forwards;
+      animation: spreadEnterFromRight 280ms cubic-bezier(0.22, 0.8, 0.2, 1) forwards;
     }
 
     .spread.exit-to-left {
-      animation: spreadExitToLeft 320ms cubic-bezier(0.22, 0.8, 0.2, 1) forwards;
+      animation: spreadExitToLeft 280ms cubic-bezier(0.22, 0.8, 0.2, 1) forwards;
     }
 
     .spread.enter-from-left {
-      animation: spreadEnterFromLeft 320ms cubic-bezier(0.22, 0.8, 0.2, 1) forwards;
+      animation: spreadEnterFromLeft 280ms cubic-bezier(0.22, 0.8, 0.2, 1) forwards;
     }
 
     .spread.exit-to-right {
-      animation: spreadExitToRight 320ms cubic-bezier(0.22, 0.8, 0.2, 1) forwards;
+      animation: spreadExitToRight 280ms cubic-bezier(0.22, 0.8, 0.2, 1) forwards;
     }
 
     @keyframes spreadEnterFromRight {
       from {
         opacity: 0;
-        transform: translateX(56px) scale(0.985);
+        transform: translate(-50%, -50%) translateX(56px) scale(0.985);
       }
       to {
         opacity: 1;
-        transform: translateX(0) scale(1);
+        transform: translate(-50%, -50%) translateX(0) scale(1);
       }
     }
 
     @keyframes spreadExitToLeft {
       from {
         opacity: 1;
-        transform: translateX(0) scale(1);
+        transform: translate(-50%, -50%) translateX(0) scale(1);
       }
       to {
         opacity: 0;
-        transform: translateX(-56px) scale(0.985);
+        transform: translate(-50%, -50%) translateX(-56px) scale(0.985);
       }
     }
 
     @keyframes spreadEnterFromLeft {
       from {
         opacity: 0;
-        transform: translateX(-56px) scale(0.985);
+        transform: translate(-50%, -50%) translateX(-56px) scale(0.985);
       }
       to {
         opacity: 1;
-        transform: translateX(0) scale(1);
+        transform: translate(-50%, -50%) translateX(0) scale(1);
       }
     }
 
     @keyframes spreadExitToRight {
       from {
         opacity: 1;
-        transform: translateX(0) scale(1);
+        transform: translate(-50%, -50%) translateX(0) scale(1);
       }
       to {
         opacity: 0;
-        transform: translateX(56px) scale(0.985);
+        transform: translate(-50%, -50%) translateX(56px) scale(0.985);
       }
     }
 
@@ -547,7 +549,17 @@
     }
 
     let currentSpreadEl = null;
-    let navDirection = "forward"; // "forward" or "backward"
+    let navDirection = "forward";
+    let activeTransitionId = 0;
+
+    function cleanupAnimatingSpreads(stage, keepEl = null) {
+      const spreads = stage.querySelectorAll(".spread");
+      for (const el of spreads) {
+        if (el !== keepEl) {
+          el.remove();
+        }
+      }
+    }
 
     async function buildSpreadElement(token) {
       pageNum = normalizeSpreadStart(pageNum);
@@ -584,7 +596,10 @@
       const newSpread = await buildSpreadElement(token);
       if (!newSpread || token !== renderToken) return;
 
-      if (!animate || !currentSpreadEl) {
+      // Hard cleanup before any new render to prevent phantom spreads.
+      cleanupAnimatingSpreads(stage, currentSpreadEl);
+
+      if (!animate || !currentSpreadEl || !currentSpreadEl.isConnected) {
         stage.innerHTML = "";
         stage.appendChild(newSpread);
         currentSpreadEl = newSpread;
@@ -592,6 +607,23 @@
       }
 
       const oldSpread = currentSpreadEl;
+      const transitionId = ++activeTransitionId;
+
+      oldSpread.classList.remove(
+        "enter-from-right",
+        "enter-from-left",
+        "exit-to-left",
+        "exit-to-right",
+        "animating"
+      );
+      newSpread.classList.remove(
+        "enter-from-right",
+        "enter-from-left",
+        "exit-to-left",
+        "exit-to-right",
+        "animating"
+      );
+
       oldSpread.classList.add("animating");
       newSpread.classList.add("animating");
 
@@ -606,7 +638,11 @@
       stage.appendChild(newSpread);
 
       const finish = () => {
-        if (oldSpread.parentNode) oldSpread.remove();
+        // Ignore stale animation completions.
+        if (transitionId !== activeTransitionId) return;
+
+        if (oldSpread.isConnected) oldSpread.remove();
+
         newSpread.classList.remove(
           "animating",
           "enter-from-right",
@@ -614,6 +650,8 @@
           "exit-to-left",
           "exit-to-right"
         );
+
+        cleanupAnimatingSpreads(stage, newSpread);
         currentSpreadEl = newSpread;
       };
 
